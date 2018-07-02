@@ -130,7 +130,7 @@ public class Sender {
     private static void send() throws IOException {
         // TODO: start timer
 
-        for (int i = 0; i < WINDOW_SIZE; i++) {
+        for (int i = 0; i < WINDOW_SIZE && windowBase + i < packets.size(); i++) {
             sendSocket.send(packets.get(windowBase + i));
             seqLogger.info(String.valueOf(windowBase + i));
         }

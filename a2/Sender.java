@@ -1,279 +1,233 @@
-import java.util.Timer;
-import java.util.TimerTask;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.net.InetAddress;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketException;
 import java.util.ArrayList;
-
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.logging.FileHandler;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 public class Sender {
 
-    // Constants
-    private static final int max_window_size = 10;
+    private static final String LOG_FILE_SEQ = "seqnum.log";
+    private static final String LOG_FILE_ACK = "ack.log";
 
-    // Arguments to be initialized
-    private static String hostAddressOfEmulator;
-    private static int sendDataUdpPort;
-    private static int receiveAckUdpPort;
+    private static final int PACKET_DATA_SIZE = 500;
+    private static final int PACKET_SIZE = 512;
+    private static final int WINDOW_SIZE = 10;
+    private static final int SeqNumModulo = 32;
+
+    private static final Logger seqLogger = Logger.getLogger(Sender.class.getName());
+    private static final Logger ackLogger = Logger.getLogger(Sender.class.getName());
+
+    private static String hostAddr;
+    private static int sendPort;
+    private static int receivePort;
     private static String fileName;
-    private static InetAddress emulatorHostAddress;
 
-    // File to output
-    static FileWriter seqnumLog;
-    static FileWriter ackLog;
+    private static InetAddress hostIa;
 
-    // UDP socket
-    static DatagramSocket sendDataSocket;
-    static DatagramSocket receiveAckSocket;
-    static byte[] packetBytes;
-    static ArrayList<DatagramPacket> packetList;
+    private static DatagramSocket sendSocket, receiveSocket;
 
-    // Counters
-    static int curSeqNum;
-    static int packetCounter;
+    private static List<DatagramPacket> packets;
 
-    static Timer timer;
+    private static Timer timer;
 
-    // Error report
-    private static void errorReport(int error) {
-        switch (error) {
-            case 1:
-                System.err.println("Incorrect command line arguments.");
-                break;
-            case 2:
-                System.err.println("Can not create log files.");
-                break;
-            case 3:
-                System.err.println("UDP initialization error.");
-                break;
-            case 4:
-                System.err.println("Packets initialization error.");
-                break;
-            case 5:
-                System.err.println("Receving wrong packets.");
-                break;
-            case 6:
-                System.err.println("Error when sending/receiving EOT.");
-                break;
-            case 7:
-                System.err.println("Error when closing files.");
-                break;
-            case 8:
-                System.err.println("Error when Waiting for acknowledgements");
-                break;
-        }
-        System.exit(1);
+    private static int windowBase;
+    private static int sentHi;
+
+    private Sender() {
+
     }
 
-    private static void setCommandLineArguments(String []args) {
+    public static void main(String[] args) throws Exception {
+        // parse input and do error check
+        parseInput(args);
+
+        // init loggers
+        initLogger();
+
+        // create packets
+        initPackets();
+
+        // init udp sockets
+        initUdp();
+
+        // start sending
+        windowBase = 0;
+        sentHi = -1;
+        sendWindow();
+
+        // wait for all acks
+        waitAck();
+
+        // send EOT and close connection
+        closeConnection();
+    }
+
+    private static void parseInput(String[] args) throws Exception {
         if (args.length != 4) {
-            errorReport(1);
+            throw new Exception("Invalid number of input arguments");
         }
+
+        hostAddr = args[0];
+        hostIa = InetAddress.getByName(hostAddr);
+
         try {
-            hostAddressOfEmulator = args[0];
-            sendDataUdpPort = Integer.valueOf(args[1]);
-            receiveAckUdpPort = Integer.valueOf(args[2]);
-            fileName = args[3];
-            emulatorHostAddress = InetAddress.getByName(hostAddressOfEmulator);
-        } catch (Exception e) {
-            errorReport(1);
+            sendPort = Integer.parseInt(args[1]);
+        } catch (NumberFormatException e) {
+            throw new Exception("Invalid input type for args[1]");
         }
-    }
 
-    // Clear Exisiting logs
-    private static void clearExistingLog() throws Exception {
-        PrintWriter seqWriter = new PrintWriter("seqnum.log");
-        PrintWriter ackWriter = new PrintWriter("ack.log");
-        seqWriter.print("");
-        seqWriter.close();
-        ackWriter.print("");
-        ackWriter.close();
-    }
-
-    // Create Writing Logs
-    private static void createWritingLogs() {
         try {
-            clearExistingLog();
-            seqnumLog = new FileWriter("seqnum.log");
-            ackLog = new FileWriter("ack.log");
-        } catch (Exception e) {
-            errorReport(2);
+            receivePort = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {
+            throw new Exception("Invalid input type for args[2]");
         }
+
+        fileName = args[3];
     }
 
-    // Close file
-    private static void closeFile() {
+    private static void initLogger() throws IOException {
+        FileHandler seqFh = new FileHandler(LOG_FILE_SEQ);
+        seqFh.setFormatter(new SimpleFormatter());
+        seqLogger.addHandler(seqFh);
+
+        FileHandler ackFh = new FileHandler(LOG_FILE_ACK);
+        ackFh.setFormatter(new SimpleFormatter());
+        ackLogger.addHandler(ackFh);
+    }
+
+    private static void initPackets() throws Exception {
+        BufferedReader reader = null;
         try {
-            ackLog.close();
-            seqnumLog.close();
-        } catch (Exception e) {
-            errorReport(7);
-        }
-    }
+            reader = new BufferedReader(new FileReader(fileName));
 
-    // Initialize UDP
-    private static void initializeUDP() {
-        try {
-            sendDataSocket = new DatagramSocket();
-            receiveAckSocket = new DatagramSocket(receiveAckUdpPort);
-            packetBytes = new byte[512];
-        } catch (Exception e) {
-            errorReport(3);
-        }
-    }
+            StringBuilder sb = new StringBuilder();
+            packets = new ArrayList<>();
 
-    // Create Packets
-    private static void createPacket(String packetData) throws Exception {
-        packet p = packet.createPacket(packetCounter++, packetData);    // Create packet p
-        byte[] pBytes = p.getUDPdata();                             // Convert packet into Bytes
-        // Add the packet to packet list
-        packetList.add(new DatagramPacket(pBytes, pBytes.length, emulatorHostAddress, sendDataUdpPort));
-    }
-
-    // Initialize Packets
-    private static void initializePackets() {
-        try {
-            packetList = new ArrayList<>();
-            int c;
-            FileReader file = new FileReader(fileName);
-            StringBuilder packetBuilder = new StringBuilder(500);
-            while ((c = file.read()) != -1) {
-                packetBuilder.append((char)(c));
-                if (packetBuilder.length() == 500) {
-                    createPacket(packetBuilder.toString());
-                    packetBuilder = new StringBuilder(500);
+            int readChar;
+            int seqNum = 0;
+            int charCount = 0;
+            // chunk file into packets
+            while ((readChar = reader.read()) != -1) {
+                if (charCount == PACKET_DATA_SIZE) {
+                    byte[] udpBytes = packet.createPacket(seqNum, sb.toString()).getUDPdata();
+                    packets.add(new DatagramPacket(udpBytes, udpBytes.length, hostIa, sendPort));
+                    charCount = 0;
+                    sb = new StringBuilder();
+                    seqNum++;
                 }
+                sb.append((char) readChar);
+                charCount++;
             }
-            // Create remaining packet if exist
-            if (packetBuilder.length() != 0) createPacket(packetBuilder.toString());
+
+            // add remaining packet if applicable
+            if (charCount > 0) {
+                byte[] udpBytes = packet.createPacket(seqNum, sb.toString()).getUDPdata();
+                packets.add(new DatagramPacket(udpBytes, udpBytes.length, hostIa, sendPort));
+            }
         } catch (Exception e) {
-            errorReport(4);
+            throw e;
+        } finally {
+            if (reader != null) reader.close();
         }
     }
 
-    // Timer for Go Back N Protocal
-    private static void startTimer() {
-        if (timer != null) {
-            timer.cancel();
-        }
+    private static void initUdp() throws SocketException {
+        sendSocket = new DatagramSocket();
+        receiveSocket = new DatagramSocket(receivePort);
+    }
+
+    /**
+     * send packets in the current window frame
+     * @throws IOException
+     */
+    private static void sendWindow() throws IOException {
+        // start timer
+        if (timer != null) timer.cancel();
         timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
                 try {
-                    sendNPackets(max_window_size);
-                } catch (Exception e) {
-                    errorReport(4);
+                    sentHi = windowBase - 1;
+                    sendWindow();
+                } catch (IOException e) {
+                    // swallow
                 }
             }
-        }, 180);
-    }
+        }, 10);
 
-    // Send N Packets
-    private static void sendNPackets(int n) throws Exception {
-        startTimer();
-        for ( int k = curSeqNum ; k < curSeqNum + n && k < packetCounter; ++k) {
-            sendDataSocket.send(packetList.get(k));
-            seqnumLog.write( k % 32 + "\n");
+        for (int i = 0; i < WINDOW_SIZE; i++) {
+            sendSingle(windowBase + i);
         }
     }
 
-    // Recalcualte position in window
-    private static void recalculateSlidingWindow(int packetSeqNum) throws Exception
-    {
-        int curWindowBase = curSeqNum % 32;
-        if (curWindowBase > 22) {              // 22 + 10 > 31, seperated window
-            if (curWindowBase <= packetSeqNum && packetSeqNum <= 31) {      // First Window
-                int ackSkipped = packetSeqNum - curWindowBase;
-                curSeqNum += ackSkipped + 1;
-                sendNPackets(ackSkipped + 1);
-            } else if (0 <= packetSeqNum && packetSeqNum <= curSeqNum + max_window_size - 33) {                                                  // Second Window
-                int ackSkipped = 31 - curWindowBase + 1 + packetSeqNum;
-                curSeqNum += ackSkipped + 1;
-                sendNPackets(ackSkipped + 1);
-            }   // Ignore duplicates
-        } else if (curWindowBase <= packetSeqNum
-                && packetSeqNum <= curWindowBase + max_window_size) {   // base < 22, ignore duplicates
-            int ackSkipped = packetSeqNum - curWindowBase;
-            curSeqNum += ackSkipped + 1;
-            sendNPackets(ackSkipped + 1);
+    /**
+     * send single packet
+     * @param idx packet index
+     * @throws IOException
+     */
+    private static void sendSingle(int idx) throws IOException {
+        // if idx out of bound or if idx is already sent
+        if (idx >= packets.size() || idx < sentHi) {
+            return;
         }
+
+        // send and audit
+        sendSocket.send(packets.get(idx));
+        sentHi = idx;
+        seqLogger.info(String.valueOf(idx % SeqNumModulo));
     }
 
-    // Wait for acknowledgement from receiver
-    private static void acknowledgementWaiting() {
-        try {
-            DatagramPacket ack = new DatagramPacket(packetBytes, packetBytes.length);
-            for ( ;; ) {
-                if (curSeqNum >= packetCounter) break;
-                receiveAckSocket.receive(ack);
-                packet p = packet.parseUDPdata(ack.getData());
-                switch (p.getType()) {
-                    case 0 :                        // Recived Ack packet
-                        if (p.getSeqNum() == curSeqNum % 32) {      // Correct Order
-                            ++curSeqNum;
-                            sendNPackets(1);
-                        } else {                                    // Out of Order
-                            recalculateSlidingWindow(p.getSeqNum());
-                        }
-                        ackLog.write(p.getSeqNum() + "\n");         // Write to file
-                        break;
-                    case 1:
-                    case 2:
-                    default :
-                        errorReport(5);
+    private static void waitAck() throws Exception {
+        while (windowBase < packets.size()) {
+            packet receivePacket = waitForPacket();
+
+            if (receivePacket.getType() == 0) { // if received an ACK packet
+                int seqNum = receivePacket.getSeqNum();
+                // if in correct order, send next packet
+                if (seqNum == windowBase % SeqNumModulo) {
+                    windowBase++;
+                    sendWindow();
                 }
+            } else {
+                throw new Exception("Received invalid packet");
             }
-        } catch ( Exception e) {
-            errorReport(8);
         }
     }
 
-    // Send EOT and Close UDP connection
-    private static void closeConnection() {
-        try {
-            // Create EOT packet and send EOT packet
-            timer.cancel();
-            packet eot = packet.createEOT(curSeqNum);
-            byte[] eotBytes = eot.getUDPdata();
-            DatagramPacket eotPacket = new DatagramPacket(eotBytes, eotBytes.length,
-                    emulatorHostAddress, sendDataUdpPort);
-            sendDataSocket.send(eotPacket);
-            sendDataSocket.close();
+    /**
+     * sends EOT and close both send and receive sockets
+     * @throws Exception
+     */
+    private static void closeConnection() throws Exception {
+        if (timer != null) timer.cancel();
 
-            // Wait for EOT acknowledgement
-            DatagramPacket ack = new DatagramPacket(packetBytes, packetBytes.length);
-            for ( ; ; ) {
-                receiveAckSocket.receive(ack);
-                packet ackPacket = packet.parseUDPdata(ack.getData());
-                if (ackPacket.getType() == 0) {
-                    // Write late arriving acks
-                    ackLog.write(ackPacket.getSeqNum() + "\n");
-                } else if (ackPacket.getType() == 2) {
-                    // close receive ack socket connection
-                    receiveAckSocket.close();
-                    break;
-                }
-            }
-        } catch (Exception e) {
-            errorReport(6);
+        // send EOT and close send socket
+        byte[] udpBytes = packet.createEOT(packets.size()).getUDPdata();
+        sendSocket.send(new DatagramPacket(udpBytes, udpBytes.length, hostIa, sendPort));
+        sendSocket.close();
+
+        // wait for EOT's ACK and close receive socket
+        packet receivePacket = waitForPacket();
+        if (receivePacket.getType() == 2) { // if received EOT packet
+            receiveSocket.close();
+        } else {
+            throw new Exception("Received invalid packet");
         }
     }
 
-    public static void main(String []args) throws Exception {
-        curSeqNum = 0;
-        packetCounter = 0;
-        setCommandLineArguments(args);  // Set commandline arguments
-        createWritingLogs();    //  Create output logs
-        initializeUDP();        // Set up UDP
-        initializePackets();    // Intialize file data into packets
-        sendNPackets(max_window_size);         // Start sending packages
-        acknowledgementWaiting();   // Wait for acknowledgement
-        closeConnection();          // Send eot and Close connection
-        closeFile();                // Close files
+    private static packet waitForPacket() throws Exception {
+        byte[] receiveBuffer = new byte[PACKET_SIZE];
+        DatagramPacket receiveDp = new DatagramPacket(receiveBuffer, PACKET_SIZE);
+        receiveSocket.receive(receiveDp);
+        return packet.parseUDPdata(receiveDp.getData());
     }
 
 }

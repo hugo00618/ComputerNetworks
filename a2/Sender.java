@@ -21,7 +21,7 @@ public class Sender {
     private static final int WINDOW_SIZE = 10;
     private static final int SeqNumModulo = 32;
 
-    private static PrintWriter seqWritter, ackWritter;
+    private static PrintWriter seqWriter, ackWriter;
 
     private static String hostAddr;
     private static int sendPort;
@@ -95,8 +95,8 @@ public class Sender {
     }
 
     private static void initLogger() throws IOException {
-        seqWritter = new PrintWriter("the-file-name.txt", "UTF-8");
-        ackWritter = new PrintWriter("the-file-name.txt", "UTF-8");
+        seqWriter = new PrintWriter(LOG_FILE_SEQ, "UTF-8");
+        ackWriter = new PrintWriter(LOG_FILE_ACK, "UTF-8");
     }
 
     private static void initPackets() throws Exception {
@@ -179,7 +179,7 @@ public class Sender {
         // send and audit
         sendSocket.send(packets.get(idx));
         sentHi = idx;
-        seqWritter.println(idx % SeqNumModulo);
+        seqWriter.println(idx % SeqNumModulo);
     }
 
     private static void waitAck() throws Exception {
@@ -188,7 +188,7 @@ public class Sender {
 
             if (receivePacket.getType() == 0) { // if received an ACK packet
                 int seqNum = receivePacket.getSeqNum();
-                ackWritter.println(seqNum);
+                ackWriter.println(seqNum);
                 // if in correct order, send next packet
                 if (seqNum == windowBase % SeqNumModulo) {
                     windowBase++;
@@ -229,7 +229,7 @@ public class Sender {
     }
 
     private static void closeLogger() {
-        seqWritter.close();
-        ackWritter.close();
+        seqWriter.close();
+        ackWriter.close();
     }
 }

@@ -21,8 +21,7 @@ public class Sender {
     private static final int WINDOW_SIZE = 10;
     private static final int SeqNumModulo = 32;
 
-    private static final Logger seqLogger = Logger.getLogger(Sender.class.getName());
-    private static final Logger ackLogger = Logger.getLogger(Sender.class.getName());
+    private static PrintWriter seqWritter, ackWritter;
 
     private static String hostAddr;
     private static int sendPort;
@@ -48,7 +47,7 @@ public class Sender {
         // parse input and do error check
         parseInput(args);
 
-        // init loggers
+        // init log writer
         initLogger();
 
         // create packets
@@ -67,6 +66,9 @@ public class Sender {
 
         // send EOT and close connection
         closeConnection();
+
+        // close log writer
+        closeLogger();
     }
 
     private static void parseInput(String[] args) throws Exception {
@@ -93,13 +95,8 @@ public class Sender {
     }
 
     private static void initLogger() throws IOException {
-        FileHandler seqFh = new FileHandler(LOG_FILE_SEQ);
-        seqFh.setFormatter(new SimpleFormatter());
-        seqLogger.addHandler(seqFh);
-
-        FileHandler ackFh = new FileHandler(LOG_FILE_ACK);
-        ackFh.setFormatter(new SimpleFormatter());
-        ackLogger.addHandler(ackFh);
+        seqWritter = new PrintWriter("the-file-name.txt", "UTF-8");
+        ackWritter = new PrintWriter("the-file-name.txt", "UTF-8");
     }
 
     private static void initPackets() throws Exception {
@@ -182,7 +179,7 @@ public class Sender {
         // send and audit
         sendSocket.send(packets.get(idx));
         sentHi = idx;
-        seqLogger.info(String.valueOf(idx % SeqNumModulo));
+        seqWritter.println(idx % SeqNumModulo);
     }
 
     private static void waitAck() throws Exception {
@@ -191,6 +188,7 @@ public class Sender {
 
             if (receivePacket.getType() == 0) { // if received an ACK packet
                 int seqNum = receivePacket.getSeqNum();
+                ackWritter.println(seqNum);
                 // if in correct order, send next packet
                 if (seqNum == windowBase % SeqNumModulo) {
                     windowBase++;
@@ -230,4 +228,8 @@ public class Sender {
         return packet.parseUDPdata(receiveDp.getData());
     }
 
+    private static void closeLogger() {
+        seqWritter.close();
+        ackWritter.close();
+    }
 }

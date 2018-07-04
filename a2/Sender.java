@@ -193,8 +193,8 @@ public class Sender {
                 ackWriter.println(seqNum);
                 System.out.println("Ack seq: " + seqNum);
                 // if in correct order, send next packet
-                if (seqNum == windowBase % SeqNumModulo) {
-                    windowBase++;
+                if (seqNum >= windowBase % SeqNumModulo) {
+                    windowBase = seqNum + 1;
                     sendWindow();
                 }
             } else {

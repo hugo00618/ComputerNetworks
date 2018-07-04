@@ -152,6 +152,7 @@ public class Sender {
             @Override
             public void run() {
                 try {
+                    System.out.println("timeout");
                     sentHi = windowBase - 1;
                     sendWindow();
                 } catch (IOException e) {
@@ -177,6 +178,7 @@ public class Sender {
         }
 
         // send and audit
+        System.out.println("Send idx: " + idx);
         sendSocket.send(packets.get(idx));
         sentHi = idx;
         seqWriter.println(idx % SeqNumModulo);
@@ -189,6 +191,7 @@ public class Sender {
             if (receivePacket.getType() == 0) { // if received an ACK packet
                 int seqNum = receivePacket.getSeqNum();
                 ackWriter.println(seqNum);
+                System.out.println("Ack seq: " + seqNum);
                 // if in correct order, send next packet
                 if (seqNum == windowBase % SeqNumModulo) {
                     windowBase++;

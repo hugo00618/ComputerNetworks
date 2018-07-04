@@ -1,12 +1,8 @@
-import java.util.Timer;
-import java.util.TimerTask;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.net.InetAddress;
 import java.io.PrintWriter;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.util.ArrayList;
 
 public class Receiver {
 
@@ -106,7 +102,7 @@ public class Receiver {
 
     // send Acknowledgement for the packet recieved from the sender
     private static void sendAcknowledgement(int ackSeqNum, DatagramPacket ackData) throws Exception {
-        Packet ackPacket = Packet.createACK(ackSeqNum);
+        packet ackPacket = packet.createACK(ackSeqNum);
         byte[] ackBytes = ackPacket.getUDPdata();
         ackData = new DatagramPacket(ackBytes, ackBytes.length,emulatorHostAddress, sendAckUdpPort);
 		sendAckUdpSocket.send(ackData);
@@ -114,7 +110,7 @@ public class Receiver {
 
     // Send EOT ack to sender to end connection
     private static void sendEOTAcknowledgement(int ackSeqNum) throws Exception {
-        Packet eotPacket = Packet.createEOT(ackSeqNum);
+        packet eotPacket = packet.createEOT(ackSeqNum);
         byte[] eotBytes = eotPacket.getUDPdata();
 		sendAckUdpSocket.send(
             new DatagramPacket(eotBytes, eotBytes.length,emulatorHostAddress, sendAckUdpPort)
@@ -125,16 +121,16 @@ public class Receiver {
     private static void acknowledgementWaiting() {
         int curSeqNum = 0;
         DatagramPacket ackData = null;
-        DatagramPacket packet = new DatagramPacket(packetBytes, packetBytes.length);
+        DatagramPacket dp = new DatagramPacket(packetBytes, packetBytes.length);
         Boolean eotSend = false;
         try {
             while (!eotSend) {
-                receiveDataUdpSocket.receive(packet);                       // Wait for data
-                Packet p = Packet.parseUDPdata(packetBytes);
+                receiveDataUdpSocket.receive(dp);                       // Wait for data
+                packet p = packet.parseUDPdata(packetBytes);
                 int receivedSeqPacket = p.getSeqNum();
                 arrivalLog.write( receivedSeqPacket + "\n" );
                 switch (p.getType()) {
-                    case Packet.DATA_PACKET :                               // Data type
+                    case 1 :                               // Data type
                         if (receivedSeqPacket == curSeqNum) {               // Correct seq packet received
                             sendAcknowledgement(curSeqNum, ackData);        // Send acknowledegement to sender
                             ++curSeqNum;
@@ -145,11 +141,11 @@ public class Receiver {
                             sendAckUdpSocket.send(ackData);                 // Resend previous ack        
                         }
                         break;
-                    case Packet.EOT_PACKET :                                // EOT type
+                    case 2 :                                // EOT type
                         sendEOTAcknowledgement(curSeqNum);                  // Send Ack
                         eotSend = true;                                     // Stop looping
                         break;
-                    case Packet.ACK_PACKET :
+                    case 0 :
                     default :
                         errorReport(5);
                 }
@@ -159,7 +155,7 @@ public class Receiver {
         }
     }
 
-    public static void main(String [] args) {
+    public static void main(String [] args) throws Exception {
         setCommandLineArguments(args);          // Read command line arguments
         createWritingLogs();                    // create file and log
         initializeUDP();                        // intialize udp sockets

@@ -159,7 +159,7 @@ public class Sender {
                     // swallow
                 }
             }
-        }, 10);
+        }, 100);
 
         for (int i = 0; i < WINDOW_SIZE; i++) {
             sendSingle(windowBase + i);

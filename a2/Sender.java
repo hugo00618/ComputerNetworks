@@ -173,7 +173,7 @@ public class Sender {
      */
     private static void sendSingle(int idx) throws IOException {
         // if idx out of bound or if idx is already sent
-        if (idx >= packets.size() || idx < sentHi) {
+        if (idx >= packets.size() || idx <= sentHi) {
             return;
         }
 
@@ -195,6 +195,7 @@ public class Sender {
                 // if in correct order, send next packet
                 if (seqNum >= windowBase % SeqNumModulo) {
                     windowBase = seqNum + 1;
+                    System.out.println("windowBase: " + windowBase);
                     sendWindow();
                 }
             } else {

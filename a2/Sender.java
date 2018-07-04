@@ -198,6 +198,11 @@ public class Sender {
                     windowBase += seqNum + 1;
                     System.out.println("windowBase: " + windowBase);
                     sendWindow();
+                } else if (seqNum <= WINDOW_SIZE &&
+                        windowBase % SeqNumModulo >= SeqNumModulo - WINDOW_SIZE) { // if ack and winBase are not on the same page
+                    windowBase = ((int) Math.ceil(windowBase / SeqNumModulo)) * SeqNumModulo + seqNum + 1;
+                    System.out.println("windowBase: " + windowBase);
+                    sendWindow();
                 }
             } else {
                 throw new Exception("Received invalid packet");

@@ -23,7 +23,6 @@ public class Sender {
 
     private static PrintWriter seqWriter, ackWriter;
 
-    private static String hostAddr;
     private static int sendPort;
     private static int receivePort;
     private static String fileName;
@@ -76,7 +75,7 @@ public class Sender {
             throw new Exception("Invalid number of input arguments");
         }
 
-        hostAddr = args[0];
+        String hostAddr = args[0];
         hostIa = InetAddress.getByName(hostAddr);
 
         try {

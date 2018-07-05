@@ -98,11 +98,14 @@ public class Receiver {
 
                 System.out.println("Receive: " + seqNum);
 
-                int ack = waitingSeqNum;
+                int ack;
                 if (seqNum == waitingSeqNum) { // if order is correct
-                    // increment waitingSeqNum
+                    // set ack and increment waitingSeqNum
+                    ack = seqNum;
                     waitingSeqNum++;
                     waitingSeqNum %= SeqNumModulo;
+                } else { // otherwise ack last consecutive seq num received
+                    ack = (waitingSeqNum + SeqNumModulo - 1) % SeqNumModulo;
                 }
 
                 // only send back ack when pkt0 has been received

@@ -14,7 +14,7 @@ public class Receiver {
     private static final int WINDOW_SIZE = 10;
     private static final int SeqNumModulo = 32;
 
-    private static PrintWriter arriveWriter;
+    private static PrintWriter arriveWriter, outputWriter;
 
     private static int sendPort;
     private static int receivePort;
@@ -32,8 +32,8 @@ public class Receiver {
         // parse input and do error check
         parseInput(args);
 
-        // init log writer
-        initLogger();
+        // init file writer
+        initFile();
 
         // init udp sockets
         initUdp();
@@ -41,8 +41,8 @@ public class Receiver {
         // wait for packets and close sockets upon receiving EOT
         waitPackets();
 
-        // close logger
-        closeLogger();
+        // close writer
+        closeFile();
     }
 
     private static void parseInput(String[] args) throws Exception {
@@ -68,8 +68,9 @@ public class Receiver {
         fileName = args[3];
     }
 
-    private static void initLogger() throws IOException {
+    private static void initFile() throws IOException {
         arriveWriter = new PrintWriter(LOG_FILE_ARRIVE, "UTF-8");
+        outputWriter = new PrintWriter(fileName, "UTF-8");
     }
 
     private static void initUdp() throws SocketException {
@@ -79,15 +80,16 @@ public class Receiver {
 
     private static void waitPackets() throws Exception {
         int waitingSeqNum = 0;
-        boolean receivedPkt0 = false;
+        boolean receivedPkt0 = false; // if received first packet
 
         while (true) {
+            // wait for packet
             byte[] receiveBuffer = new byte[PACKET_SIZE];
             DatagramPacket receiveDp = new DatagramPacket(receiveBuffer, PACKET_SIZE);
             receiveSocket.receive(receiveDp);
             packet p = packet.parseUDPdata(receiveDp.getData());
 
-            if (p.getType() == 1) { // if packet
+            if (p.getType() == 1) { // if regular packet
                 int seqNum = p.getSeqNum();
 
                 arriveWriter.println(seqNum);
@@ -95,22 +97,21 @@ public class Receiver {
                 // update flag
                 if (seqNum == 0) receivedPkt0 = true;
 
-                System.out.println("Receive: " + seqNum);
-
                 int ack;
                 if (seqNum == waitingSeqNum) { // if order is correct
                     // set ack and increment waitingSeqNum
                     ack = seqNum;
                     waitingSeqNum++;
                     waitingSeqNum %= SeqNumModulo;
+
+                    // write packet to output file
+                    outputWriter.print(new String(p.getData()));
                 } else { // otherwise ack last consecutive seq num received
                     ack = (waitingSeqNum + SeqNumModulo - 1) % SeqNumModulo;
                 }
 
                 // only send back ack when pkt0 has been received
                 if (receivedPkt0) {
-                    System.out.println("ACK: " + ack);
-
                     byte[] udpBytes = packet.createACK(ack).getUDPdata();
                     sendSocket.send(new DatagramPacket(udpBytes, udpBytes.length, hostIa, sendPort));
                 }
@@ -129,8 +130,9 @@ public class Receiver {
         }
     }
 
-    private static void closeLogger() {
+    private static void closeFile() {
         arriveWriter.close();
+        outputWriter.close();
     }
 
 }

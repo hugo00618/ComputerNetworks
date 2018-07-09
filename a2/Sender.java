@@ -36,7 +36,7 @@ public class Sender {
     private static Timer timer;
 
     private static int windowBase;
-    private static int sentHi;
+    private static int sentHi; // highest index of packet that has been sent in the current window
 
     private Sender() {
 
@@ -109,7 +109,7 @@ public class Sender {
             int readChar;
             int seqNum = 0;
             int charCount = 0;
-            // chunk file into packets
+            // divide file into packets
             while ((readChar = reader.read()) != -1) {
                 if (charCount == PACKET_DATA_SIZE) {
                     byte[] udpBytes = packet.createPacket(seqNum, sb.toString()).getUDPdata();
@@ -122,7 +122,7 @@ public class Sender {
                 charCount++;
             }
 
-            // add remaining packet if applicable
+            // add the last remaining packet if applicable
             if (charCount > 0) {
                 byte[] udpBytes = packet.createPacket(seqNum, sb.toString()).getUDPdata();
                 packets.add(new DatagramPacket(udpBytes, udpBytes.length, hostIa, sendPort));
@@ -151,8 +151,7 @@ public class Sender {
             @Override
             public void run() {
                 try {
-                    System.out.println("timeout");
-                    sentHi = windowBase - 1;
+                    sentHi = windowBase - 1; // reset sentHi to the end of last window
                     sendWindow();
                 } catch (IOException e) {
                     // swallow
@@ -177,7 +176,6 @@ public class Sender {
         }
 
         // send and audit
-        System.out.println("Send idx: " + idx);
         sendSocket.send(packets.get(idx));
         sentHi = idx;
         seqWriter.println(idx % SeqNumModulo);
@@ -190,17 +188,15 @@ public class Sender {
             if (receivePacket.getType() == 0) { // if received an ACK packet
                 int seqNum = receivePacket.getSeqNum();
                 ackWriter.println(seqNum);
-                System.out.println("Ack seq: " + seqNum);
                 // if in correct order, send next packet
                 if (seqNum >= windowBase % SeqNumModulo) {
                     windowBase -= windowBase % SeqNumModulo;
                     windowBase += seqNum + 1;
-                    System.out.println("windowBase: " + windowBase);
                     sendWindow();
                 } else if (seqNum <= WINDOW_SIZE &&
-                        windowBase % SeqNumModulo >= SeqNumModulo - WINDOW_SIZE) { // if ack and winBase are not on the same page
+                        windowBase % SeqNumModulo >= SeqNumModulo - WINDOW_SIZE) {
+                    // if ack is on the next page while winBase is still on the current
                     windowBase = ((int) Math.ceil(windowBase / SeqNumModulo)) * SeqNumModulo + seqNum + 1;
-                    System.out.println("windowBase: " + windowBase);
                     sendWindow();
                 }
             } else {

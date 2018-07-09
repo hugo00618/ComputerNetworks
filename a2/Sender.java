@@ -222,7 +222,7 @@ public class Sender {
         if (receivePacket.getType() == 2) { // if received EOT packet
             receiveSocket.close();
         } else {
-            throw new Exception("Received invalid packet");
+            throw new Exception("Received invalid packet" + receivePacket.getType());
         }
     }
 

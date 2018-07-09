@@ -221,8 +221,6 @@ public class Sender {
         packet receivePacket = waitForPacket();
         if (receivePacket.getType() == 2) { // if received EOT packet
             receiveSocket.close();
-        } else {
-            throw new Exception("Received invalid packet" + receivePacket.getType());
         }
     }
 

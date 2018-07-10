@@ -140,7 +140,7 @@ public class Sender {
     }
 
     /**
-     * send packets in the current window frame
+     * sends packets in the current window frame
      * @throws IOException
      */
     private static void sendWindow() throws IOException {
@@ -151,7 +151,8 @@ public class Sender {
             @Override
             public void run() {
                 try {
-                    sentHi = windowBase - 1; // reset sentHi to the end of last window
+                    // timeout, reset sentHi to the end of last window and resend current window
+                    sentHi = windowBase - 1;
                     sendWindow();
                 } catch (IOException e) {
                     // swallow
@@ -165,7 +166,7 @@ public class Sender {
     }
 
     /**
-     * send single packet
+     * sends single packet
      * @param idx packet index
      * @throws IOException
      */
@@ -186,16 +187,18 @@ public class Sender {
             packet receivePacket = waitForPacket();
 
             if (receivePacket.getType() == 0) { // if received an ACK packet
+                // get seqNum and audit
                 int seqNum = receivePacket.getSeqNum();
                 ackWriter.println(seqNum);
+
                 // if in correct order, send next packet
-                if (seqNum >= windowBase % SeqNumModulo) {
+                if (seqNum >= windowBase % SeqNumModulo) { // if ack and windowBase are on the same page
                     windowBase -= windowBase % SeqNumModulo;
                     windowBase += seqNum + 1;
                     sendWindow();
                 } else if (seqNum <= WINDOW_SIZE &&
                         windowBase % SeqNumModulo >= SeqNumModulo - WINDOW_SIZE) {
-                    // if ack is on the next page while winBase is still on the current
+                    // if ack is on the next page while winBase is still on the current page
                     windowBase = ((int) Math.ceil(windowBase / SeqNumModulo)) * SeqNumModulo + seqNum + 1;
                     sendWindow();
                 }
@@ -218,9 +221,12 @@ public class Sender {
         sendSocket.close();
 
         // wait for EOT's ACK and close receive socket
-        packet receivePacket = waitForPacket();
-        if (receivePacket.getType() == 2) { // if received EOT packet
-            receiveSocket.close();
+        while (true) {
+            packet receivePacket = waitForPacket();
+            if (receivePacket.getType() == 2) { // if received EOT packet
+                receiveSocket.close();
+                return;
+            }
         }
     }
 

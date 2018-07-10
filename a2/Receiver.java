@@ -90,13 +90,14 @@ public class Receiver {
             packet p = packet.parseUDPdata(receiveDp.getData());
 
             if (p.getType() == 1) { // if regular packet
+                // get seqNum and audit
                 int seqNum = p.getSeqNum();
-
                 arriveWriter.println(seqNum);
 
                 // update flag
                 if (seqNum == 0) receivedPkt0 = true;
 
+                // compute ack
                 int ack;
                 if (seqNum == waitingSeqNum) { // if order is correct
                     // set ack and increment waitingSeqNum
@@ -106,7 +107,7 @@ public class Receiver {
 
                     // write packet to output file
                     outputWriter.print(new String(p.getData()));
-                } else { // otherwise ack last consecutive seq num received
+                } else { // otherwise ack last in order seqNum
                     ack = (waitingSeqNum + SeqNumModulo - 1) % SeqNumModulo;
                 }
 
@@ -116,8 +117,12 @@ public class Receiver {
                     sendSocket.send(new DatagramPacket(udpBytes, udpBytes.length, hostIa, sendPort));
                 }
             } else if (p.getType() == 2) { // if eot
+                // get seqNum and audit
+                int seqNum = p.getSeqNum();
+                arriveWriter.println(seqNum);
+
                 // send a eot packet back
-                byte[] udpBytes = packet.createEOT(p.getSeqNum()).getUDPdata();
+                byte[] udpBytes = packet.createEOT(seqNum).getUDPdata();
                 sendSocket.send(new DatagramPacket(udpBytes, udpBytes.length, hostIa, sendPort));
 
                 // close sockets and return

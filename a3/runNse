@@ -1,0 +1,4 @@
+#!/bin/bash
+
+./nse-linux386 ubuntu1604-"$1".student.cs.uwaterloo.ca "$2"
+

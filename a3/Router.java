@@ -288,7 +288,7 @@ public class Router {
                 processHello(new PKT_HELLO(dp.getData()));
                 break;
             } else { // PKT_LSPDU
-                PKT_LSPDU pktLspdu = new PKT_LSPDU(dp.getData());
+                processLspdu(new PKT_LSPDU(dp.getData()));
             }
         }
     }
@@ -307,6 +307,13 @@ public class Router {
 
         // recalculate min paths
 
+    }
+
+    private static void processLspdu(PKT_LSPDU packet) {
+        // audit
+        packet.logReceive(routerId);
+
+        
     }
 
     private static void closeLogger() {

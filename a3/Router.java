@@ -3,6 +3,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 public class Router {
 
@@ -38,8 +39,9 @@ public class Router {
 
         @Override
         public byte[] getUDPdata() {
-            ByteBuffer buffer = ByteBuffer.allocate(512);
-            buffer.putLong(routerId);
+            ByteBuffer buffer = ByteBuffer.allocate(PACKET_SIZE);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+            buffer.putInt(routerId);
             return buffer.array();
         }
 

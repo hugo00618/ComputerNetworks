@@ -39,7 +39,7 @@ public class Router {
 
         @Override
         public byte[] getUDPdata() {
-            ByteBuffer buffer = ByteBuffer.allocate(PACKET_SIZE);
+            ByteBuffer buffer = ByteBuffer.allocate(4);
             buffer.order(ByteOrder.LITTLE_ENDIAN);
             buffer.putInt(routerId);
             return buffer.array();

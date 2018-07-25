@@ -96,6 +96,9 @@ public class Router {
 
         // wait for circuitDB
         waitCircuitDB();
+
+        // close logger
+        closeLogger();
     }
 
     private static void validateInput(String[] args) throws Exception {
@@ -148,6 +151,10 @@ public class Router {
 
         // audit
         logger.printf("R%d receives a circuit_DB from NSE\n", routerId);
+    }
+
+    private static void closeLogger() {
+        logger.close();
     }
 
     private static void log(boolean isSend, String pktType, int senderId) {

@@ -56,6 +56,7 @@ public class Router {
         @Override
         public void logSend(int routerId) {
             logger.printf("R%d sends a PKT_INIT to NSE\n", routerId);
+            logger.flush();
         }
     }
 
@@ -90,6 +91,7 @@ public class Router {
             logger.printf("R%d sends a PKT_HELLO to NSE: link_id %d\n",
                     routerId,
                     link_id);
+            logger.flush();
         }
 
         @Override
@@ -98,6 +100,7 @@ public class Router {
                     routerId,
                     router_id,
                     link_id);
+            logger.flush();
         }
     }
 
@@ -128,6 +131,7 @@ public class Router {
         @Override
         public void logReceive(int routerId) {
             logger.printf("R%d receives a circuit_DB from NSE\n", routerId);
+            logger.flush();
         }
     }
 
@@ -197,6 +201,7 @@ public class Router {
                     link_id,
                     cost,
                     via);
+            logger.flush();
         }
     }
 
@@ -286,7 +291,6 @@ public class Router {
 
             if (dp.getLength() == 8) { // PKT_HELLO
                 processHello(new PKT_HELLO(dp.getData()));
-                break;
             } else { // PKT_LSPDU
                 processLspdu(new PKT_LSPDU(dp.getData()));
             }
@@ -313,7 +317,7 @@ public class Router {
         // audit
         packet.logReceive(routerId);
 
-        
+
     }
 
     private static void closeLogger() {

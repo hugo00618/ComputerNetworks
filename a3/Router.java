@@ -4,6 +4,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Router {
 
@@ -19,6 +21,7 @@ public class Router {
     private static DatagramSocket socket;
 
     private static circuit_DB circuitDb;
+    private static List<PKT_LSPDU> lspdus;
 
     private static PrintWriter logger;
 
@@ -56,7 +59,7 @@ public class Router {
         }
     }
 
-    static class PKT_HELLO implements Sendable {
+    static class PKT_HELLO implements Sendable, Receivable {
         int router_id;
         int link_id;
 
@@ -86,6 +89,14 @@ public class Router {
         public void logSend(int routerId) {
             logger.printf("R%d sends a PKT_HELLO to NSE: link_id %d\n",
                     routerId,
+                    link_id);
+        }
+
+        @Override
+        public void logReceive(int routerId) {
+            logger.printf("R%d receives a PKT_HELLO: router_id %d, link_id %d\n",
+                    routerId,
+                    router_id,
                     link_id);
         }
     }
@@ -246,22 +257,26 @@ public class Router {
     }
 
     private static void sendInit() throws Exception {
-        Sendable packet = new PKT_INIT(routerId);
-        sendPacket(packet);
-        packet.logSend(routerId);
+        sendPacket(new PKT_INIT(routerId));
     }
 
     private static void waitCircuitDB() throws Exception {
+        // receive circuit db and audit
         DatagramPacket dp = receiveDatagramPacket();
         circuitDb = new circuit_DB(dp.getData());
         circuitDb.logReceive(routerId);
+
+        // init lspdus
+        lspdus = new ArrayList<>();
+        for (int i = 0; i < circuitDb.nbr_link; i++) {
+            link_cost lc = circuitDb.linkcost[i];
+            lspdus.add(new PKT_LSPDU(0, routerId, lc.link, lc.cost, 0));
+        }
     }
 
     private static void sendHello() throws Exception {
         for (int i = 0; i < circuitDb.nbr_link; i++) {
-            Sendable packet = new PKT_HELLO(routerId, circuitDb.linkcost[i].link);
-            sendPacket(packet);
-            packet.logSend(routerId);
+            sendPacket(new PKT_HELLO(routerId, circuitDb.linkcost[i].link));
         }
     }
 
@@ -270,21 +285,44 @@ public class Router {
             DatagramPacket dp = receiveDatagramPacket();
 
             if (dp.getLength() == 8) { // PKT_HELLO
-                PKT_HELLO pktHello = new PKT_HELLO(dp.getData());
-                System.out.println("Hello from " + pktHello.router_id);
+                processHello(new PKT_HELLO(dp.getData()));
+                break;
             } else { // PKT_LSPDU
                 PKT_LSPDU pktLspdu = new PKT_LSPDU(dp.getData());
             }
         }
     }
 
+    private static void processHello(PKT_HELLO packet) throws Exception {
+        // audit
+        packet.logReceive(routerId);
+
+        // respond with lspdus
+        for (PKT_LSPDU lspdu: lspdus) {
+            lspdu.sender = packet.router_id;
+            lspdu.via = packet.link_id;
+
+            sendPacket(lspdu);
+        }
+
+        // recalculate min paths
+
+    }
+
     private static void closeLogger() {
         logger.close();
     }
 
+    /**
+     * send packet and audit
+     * @param packet
+     * @throws Exception
+     */
     private static void sendPacket(Sendable packet) throws Exception {
         byte[] udpBytes = packet.getUDPdata();
         socket.send(new DatagramPacket(udpBytes, udpBytes.length, nseIa, nsePort));
+
+        packet.logSend(routerId);
     }
 
     private static DatagramPacket receiveDatagramPacket() throws Exception {

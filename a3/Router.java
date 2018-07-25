@@ -218,17 +218,19 @@ public class Router {
             sendPacket(new PKT_HELLO(routerId, lc.link));
 
             // audit
-            logger.printf("R%d sends a PKT_HELLO to NSE: link_id %d",
+            logger.printf("R%d sends a PKT_HELLO to NSE: link_id %d\n",
                     routerId,
                     lc.link);
         }
     }
 
     private static void waitLsPdu() throws Exception {
-        DatagramPacket dp = receiveDatagramPacket();
-        PKT_LSPDU pktLspdu = new PKT_LSPDU(dp.getData());
+        while (true) {
+            DatagramPacket dp = receiveDatagramPacket();
+            PKT_LSPDU pktLspdu = new PKT_LSPDU(dp.getData());
 
-        System.out.println(pktLspdu.router_id);
+            System.out.println(pktLspdu.router_id);
+        }
     }
 
     private static void closeLogger() {

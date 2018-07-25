@@ -275,7 +275,7 @@ public class Router {
         lspdus = new ArrayList<>();
         for (int i = 0; i < circuitDb.nbr_link; i++) {
             link_cost lc = circuitDb.linkcost[i];
-            lspdus.add(new PKT_LSPDU(0, routerId, lc.link, lc.cost, 0));
+            lspdus.add(new PKT_LSPDU(routerId, 0, lc.link, lc.cost, 0));
         }
     }
 
@@ -303,7 +303,7 @@ public class Router {
 
         // respond with lspdus
         for (PKT_LSPDU lspdu: lspdus) {
-            lspdu.sender = packet.router_id;
+            lspdu.router_id = packet.router_id;
             lspdu.via = packet.link_id;
 
             sendPacket(lspdu);

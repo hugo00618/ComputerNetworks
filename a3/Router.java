@@ -47,30 +47,47 @@ public class Router {
 
     }
 
+    static class PKT_HELLO extends Packet {
+        int routerId;
+        int linkId;
+
+        public PKT_HELLO(int routerId, int linkId) {
+            this.routerId = routerId;
+            this.linkId = linkId;
+        }
+
+        @Override
+        public byte[] getUDPdata() {
+            ByteBuffer buffer = ByteBuffer.allocate(8);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+            buffer.putInt(routerId);
+            buffer.putInt(linkId);
+            return buffer.array();
+        }
+    }
+
     static class circuit_DB {
 
         int nbr_link;
         link_cost linkcost[];
 
-        public circuit_DB(int nbr_link, link_cost linkcost[]) {
-            this.nbr_link = nbr_link;
-            this.linkcost = linkcost;
-        }
-
-        public static circuit_DB parseUDPdata(byte[] UDPdata) {
+        public circuit_DB(byte[] UDPdata) {
             ByteBuffer buffer = ByteBuffer.wrap(UDPdata);
             buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-            int my_nbr_link = buffer.getInt();
+            nbr_link = buffer.getInt();
 
-            link_cost my_linkcost[] = new link_cost[NBR_ROUTER];
-            for (int i = 0; i < my_nbr_link; i++) {
+            linkcost = new link_cost[NBR_ROUTER];
+            for (int i = 0; i < nbr_link; i++) {
                 int myLink = buffer.getInt();
                 int myCost = buffer.getInt();
-                my_linkcost[i] = new link_cost(myLink, myCost);
+                linkcost[i] = new link_cost(myLink, myCost);
             }
+        }
 
-            return new circuit_DB(my_nbr_link, my_linkcost);
+        public circuit_DB(int nbr_link, link_cost linkcost[]) {
+            this.nbr_link = nbr_link;
+            this.linkcost = linkcost;
         }
     }
 
@@ -84,6 +101,46 @@ public class Router {
         }
     }
 
+    static class PKT_LSPDU extends Packet {
+        int sender;
+        int router_id;
+        int link_id;
+        int cost;
+        int via;
+
+        public PKT_LSPDU(int sender, int router_id, int link_id, int cost, int via) {
+            init(sender, router_id, link_id, cost, via);
+        }
+
+        public PKT_LSPDU(byte[] UDPdata) {
+            ByteBuffer buffer = ByteBuffer.wrap(UDPdata);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+            init(buffer.getInt(), buffer.getInt(), buffer.getInt(), buffer.getInt(), buffer.getInt());
+        }
+
+        private void init(int sender, int router_id, int link_id, int cost, int via) {
+            this.sender = sender;
+            this.router_id = router_id;
+            this.link_id = link_id;
+            this.cost = cost;
+            this.via = via;
+        }
+
+        @Override
+        public byte[] getUDPdata() {
+            ByteBuffer buffer = ByteBuffer.allocate(20);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+            buffer.putInt(sender);
+            buffer.putInt(router_id);
+            buffer.putInt(link_id);
+            buffer.putInt(cost);
+            buffer.putInt(via);
+            return buffer.array();
+        }
+    }
+
+
+
     public static void main(String[] args) throws Exception {
         // read and validate input arguments
         validateInput(args);
@@ -96,6 +153,12 @@ public class Router {
 
         // wait for circuitDB
         waitCircuitDB();
+
+        // send hello to neighbour
+        sendHello();
+
+        // wait for lspdu
+        waitLsPdu();
 
         // close logger
         closeLogger();
@@ -135,26 +198,53 @@ public class Router {
     }
 
     private static void sendInit() throws Exception {
-        Packet packet = new PKT_INIT(routerId);
-        byte[] udpBytes = packet.getUDPdata();
-        socket.send(new DatagramPacket(udpBytes, udpBytes.length, nseIa, nsePort));
+        sendPacket(new PKT_INIT(routerId));
 
         // audit
-        logger.printf("R%d sends a INIT to NSE\n", routerId);
+        logger.printf("R%d sends a PKT_INIT to NSE\n", routerId);
     }
 
     private static void waitCircuitDB() throws Exception {
-        byte[] receiveBuffer = new byte[PACKET_SIZE];
-        DatagramPacket receiveDp = new DatagramPacket(receiveBuffer, PACKET_SIZE);
-        socket.receive(receiveDp);
-        circuitDb = circuit_DB.parseUDPdata(receiveDp.getData());
+        DatagramPacket dp = receiveDatagramPacket();
+        circuitDb = new circuit_DB(dp.getData());
 
         // audit
         logger.printf("R%d receives a circuit_DB from NSE\n", routerId);
     }
 
+    private static void sendHello() throws Exception {
+        for (int i = 0; i < circuitDb.nbr_link; i++) {
+            link_cost lc = circuitDb.linkcost[i];
+            sendPacket(new PKT_HELLO(routerId, lc.link));
+
+            // audit
+            logger.printf("R%d sends a PKT_HELLO to NSE: link_id %d",
+                    routerId,
+                    lc.link);
+        }
+    }
+
+    private static void waitLsPdu() throws Exception {
+        DatagramPacket dp = receiveDatagramPacket();
+        PKT_LSPDU pktLspdu = new PKT_LSPDU(dp.getData());
+
+        System.out.println(pktLspdu.router_id);
+    }
+
     private static void closeLogger() {
         logger.close();
+    }
+
+    private static void sendPacket(Packet packet) throws Exception {
+        byte[] udpBytes = packet.getUDPdata();
+        socket.send(new DatagramPacket(udpBytes, udpBytes.length, nseIa, nsePort));
+    }
+
+    private static DatagramPacket receiveDatagramPacket() throws Exception {
+        byte[] receiveBuffer = new byte[PACKET_SIZE];
+        DatagramPacket receiveDp = new DatagramPacket(receiveBuffer, PACKET_SIZE);
+        socket.receive(receiveDp);
+        return receiveDp;
     }
 
     private static void log(boolean isSend, String pktType, int senderId) {

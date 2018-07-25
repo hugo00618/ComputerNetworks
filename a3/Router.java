@@ -59,6 +59,7 @@ public class Router {
 
         public static circuit_DB parseUDPdata(byte[] UDPdata) {
             ByteBuffer buffer = ByteBuffer.wrap(UDPdata);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
 
             int my_nbr_link = buffer.getInt();
 

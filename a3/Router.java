@@ -336,7 +336,7 @@ public class Router {
 
         // respond with topology db
         for (PKT_LSPDU lspdu : topologyDB) {
-            lspdu.router_id = routerId;
+            lspdu.sender = routerId;
             lspdu.via = packet.link_id;
 
             sendPacket(lspdu);

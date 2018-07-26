@@ -5,7 +5,9 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class Router {
 
@@ -21,7 +23,9 @@ public class Router {
     private static DatagramSocket socket;
 
     private static circuit_DB circuitDb;
-    private static List<PKT_LSPDU> lspdus;
+    private static List<PKT_LSPDU> topologyDB;
+    private static List<Neighbour> neighbours;
+    private static Map<Integer, Route> rib;
 
     private static PrintWriter logger;
 
@@ -29,8 +33,29 @@ public class Router {
 
     }
 
+    static class Neighbour {
+        int router_id;
+        int link_id;
+
+        public Neighbour(int router_id, int link_id) {
+            this.router_id = router_id;
+            this.link_id = link_id;
+        }
+    }
+
+    static class Route {
+        int next_id;
+        int totalCost;
+
+        public Route() {
+            next_id = 0;
+            totalCost = Integer.MAX_VALUE;
+        }
+    }
+
     static interface Sendable {
         public byte[] getUDPdata();
+
         public void logSend(int routerId);
     }
 
@@ -258,6 +283,13 @@ public class Router {
         nseIa = InetAddress.getByName(nseHost);
         socket = new DatagramSocket(routerPort);
 
+        neighbours = new ArrayList<>();
+
+        rib = new HashMap<>();
+        for (int i = 1; i <= NBR_ROUTER; i++) {
+            rib.put(i, new Route());
+        }
+
         logger = new PrintWriter("router" + routerId + ".log");
     }
 
@@ -272,11 +304,12 @@ public class Router {
         circuitDb.logReceive(routerId);
 
         // init lspdus
-        lspdus = new ArrayList<>();
+        topologyDB = new ArrayList<>();
         for (int i = 0; i < circuitDb.nbr_link; i++) {
             link_cost lc = circuitDb.linkcost[i];
-            lspdus.add(new PKT_LSPDU(routerId, 0, lc.link, lc.cost, 0));
+            topologyDB.add(new PKT_LSPDU(routerId, 0, lc.link, lc.cost, 0));
         }
+        logTopologyDB();
     }
 
     private static void sendHello() throws Exception {
@@ -301,23 +334,48 @@ public class Router {
         // audit
         packet.logReceive(routerId);
 
-        // respond with lspdus
-        for (PKT_LSPDU lspdu: lspdus) {
-            lspdu.router_id = packet.router_id;
+        // respond with topology db
+        for (PKT_LSPDU lspdu : topologyDB) {
+            lspdu.router_id = routerId;
             lspdu.via = packet.link_id;
 
             sendPacket(lspdu);
         }
 
-        // recalculate min paths
+        // add to neighbours
+        neighbours.add(new Neighbour(packet.router_id, packet.link_id));
+
+        // update RIB
 
     }
 
-    private static void processLspdu(PKT_LSPDU packet) {
+    private static void processLspdu(PKT_LSPDU packet) throws Exception {
         // audit
         packet.logReceive(routerId);
 
+        // ignore if we already know this link
+        for (PKT_LSPDU lspdu : topologyDB) {
+            if (lspdu.router_id == packet.router_id &&
+                    lspdu.link_id == packet.link_id) {
+                return;
+            }
+        }
 
+        // add new entry to topology db and log
+        topologyDB.add(packet);
+        logTopologyDB();
+
+        // update RIB
+
+        // send to neighbours
+        packet.sender = routerId;
+        for (Neighbour neighbour : neighbours) {
+            // exclude the sender of PKT_LSPDU
+            if (neighbour.link_id != packet.link_id) {
+                packet.via = neighbour.link_id;
+                sendPacket(packet);
+            }
+        }
     }
 
     private static void closeLogger() {
@@ -326,6 +384,7 @@ public class Router {
 
     /**
      * send packet and audit
+     *
      * @param packet
      * @throws Exception
      */
@@ -334,6 +393,49 @@ public class Router {
         socket.send(new DatagramPacket(udpBytes, udpBytes.length, nseIa, nsePort));
 
         packet.logSend(routerId);
+    }
+
+    private static void logTopologyDB() {
+        logger.println("# Topology database");
+        for (int i = 1; i <= NBR_ROUTER; i++) {
+            List<PKT_LSPDU> myLinks = new ArrayList<>();
+            for (PKT_LSPDU lspdu : topologyDB) {
+                if (lspdu.router_id == i) myLinks.add(lspdu);
+            }
+            if (myLinks.size() > 0) {
+                logger.printf("R%d -> R%d nbr link %d\n",
+                        routerId,
+                        i,
+                        myLinks.size());
+                for (PKT_LSPDU lspdu : myLinks) {
+                    logger.printf("R%d -> R%d link %d cost %d\n",
+                            routerId,
+                            i,
+                            lspdu.link_id,
+                            lspdu.cost);
+                }
+            }
+        }
+        logger.flush();
+    }
+
+    private static void logRIB() {
+        logger.println("# RIB");
+        for (int i = 1; i <= NBR_ROUTER; i++) {
+            if (i == routerId) {
+                logger.printf("R%d -> R%d -> LOCAL, 0\n",
+                        routerId,
+                        routerId);
+            } else {
+                Route r = rib.get(i);
+                logger.printf("R%d -> R%d -> R%d, %d\n",
+                        routerId,
+                        i,
+                        r.next_id,
+                        r.totalCost);
+            }
+        }
+        logger.flush();
     }
 
     private static DatagramPacket receiveDatagramPacket() throws Exception {

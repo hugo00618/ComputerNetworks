@@ -27,8 +27,6 @@ public class Router {
     private static Map<Integer, Integer> neighbours; // link_id, router_id
     private static Map<Integer, Route> rib; // destRouter_id, Route
 
-    private static int checkRouter_id; // router being checked by Dijkstra
-
     private static PrintWriter logger;
 
     private Router() {
@@ -42,6 +40,14 @@ public class Router {
         public Route() {
             next_id = 0;
             totalCost = Integer.MAX_VALUE;
+        }
+
+        public boolean setMinTotalCost(int myTotalCost) {
+            if (myTotalCost < totalCost) {
+                totalCost = myTotalCost;
+                return true;
+            }
+            return false;
         }
     }
 
@@ -282,8 +288,6 @@ public class Router {
             rib.put(i, new Route());
         }
 
-        checkRouter_id = routerId;
-
         logger = new PrintWriter("router" + routerId + ".log");
     }
 
@@ -364,7 +368,7 @@ public class Router {
 
         // send to neighbours
         packet.sender = routerId;
-        for (Integer link_id: neighbours.keySet()) {
+        for (Integer link_id : neighbours.keySet()) {
             // exclude the sender of PKT_LSPDU
             if (link_id != packet.link_id) {
                 packet.via = link_id;
@@ -401,29 +405,31 @@ public class Router {
             }
         }
 
-        // if traversed all neighbours of src, set checkRouted_id to next
-        if (neighbours.size() == circuitDb.nbr_link) {
-            int minCost = -1;
-            for (Route route: rib.values()) {
-                if (minCost == -1 || route.totalCost < minCost) {
-                    minCost = route.totalCost;
-                    checkRouter_id = route.next_id;
-                }
-            }
-        }
-
         logRIB();
     }
 
     private static void updateRIB(PKT_LSPDU packet) {
-        System.out.println(checkRouter_id);
-
         // link information of myself, ignore
         if (packet.router_id == routerId) return;
 
-        // if neighbour
-        if (neighbours.containsKey(packet.link_id)) {
+        boolean dirty = false;
+        for (PKT_LSPDU lspdu : topologyDB) {
+            // if current packet links to a node that has a known route, update its Route
+            if (lspdu.link_id == packet.link_id) {
+                Route myRoute = rib.get(lspdu.router_id);
 
+                if (myRoute.totalCost != Integer.MAX_VALUE) {
+                    int totalCost = myRoute.totalCost + packet.cost;
+                    // if calculated new cost is less than old, set dirty bit to 1 and log new RIB at the end
+                    if (rib.get(packet.router_id).setMinTotalCost(totalCost)) {
+                        dirty = true;
+                    }
+                }
+            }
+        }
+
+        if (dirty) {
+            logRIB();
         }
     }
 

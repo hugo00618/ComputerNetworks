@@ -272,8 +272,11 @@ public class Router {
 
         // init lsdb
         lsdb = new HashMap<>();
-        lsdb.put(routerId, Arrays.asList(circuitDb.linkcost));
-        System.out.println(lsdb.get(routerId).size());
+        List<link_cost> lcs = new ArrayList<>();
+        for (int i = 0; i < circuitDb.nbr_link; i++) {
+            lcs.add(circuitDb.linkcost[i]);
+        }
+        lsdb.put(routerId, lcs);
         logLsdb();
     }
 

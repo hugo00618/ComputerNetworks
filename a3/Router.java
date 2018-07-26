@@ -24,23 +24,13 @@ public class Router {
 
     private static circuit_DB circuitDb;
     private static List<PKT_LSPDU> topologyDB;
-    private static List<Neighbour> neighbours;
-    private static Map<Integer, Route> rib;
+    private static Map<Integer, Integer> neighbours; // link_id, router_id
+    private static Map<Integer, Route> rib; // destRouter_id, Route
 
     private static PrintWriter logger;
 
     private Router() {
 
-    }
-
-    static class Neighbour {
-        int router_id;
-        int link_id;
-
-        public Neighbour(int router_id, int link_id) {
-            this.router_id = router_id;
-            this.link_id = link_id;
-        }
     }
 
     static class Route {
@@ -171,9 +161,9 @@ public class Router {
     }
 
     static class PKT_LSPDU implements Sendable, Receivable {
-        int sender;
         int router_id;
         int link_id;
+        int sender;
         int cost;
         int via;
 
@@ -283,7 +273,7 @@ public class Router {
         nseIa = InetAddress.getByName(nseHost);
         socket = new DatagramSocket(routerPort);
 
-        neighbours = new ArrayList<>();
+        neighbours = new HashMap<>();
 
         rib = new HashMap<>();
         for (int i = 1; i <= NBR_ROUTER; i++) {
@@ -343,10 +333,10 @@ public class Router {
         }
 
         // add to neighbours
-        neighbours.add(new Neighbour(packet.router_id, packet.link_id));
+        neighbours.put(packet.link_id, packet.router_id);
 
         // update RIB
-
+        updateRIB(packet);
     }
 
     private static void processLspdu(PKT_LSPDU packet) throws Exception {
@@ -366,13 +356,14 @@ public class Router {
         logTopologyDB();
 
         // update RIB
+        updateRIB(packet);
 
         // send to neighbours
         packet.sender = routerId;
-        for (Neighbour neighbour : neighbours) {
+        for (Integer link_id: neighbours.keySet()) {
             // exclude the sender of PKT_LSPDU
-            if (neighbour.link_id != packet.link_id) {
-                packet.via = neighbour.link_id;
+            if (link_id != packet.link_id) {
+                packet.via = link_id;
                 sendPacket(packet);
             }
         }
@@ -393,6 +384,27 @@ public class Router {
         socket.send(new DatagramPacket(udpBytes, udpBytes.length, nseIa, nsePort));
 
         packet.logSend(routerId);
+    }
+
+    private static void updateRIB(PKT_HELLO packet) {
+        Route myRoute = rib.get(packet.router_id);
+        link_cost[] neighbourLcs = circuitDb.linkcost;
+        for (int i = 0; i < circuitDb.nbr_link; i++) {
+            if (neighbourLcs[i].link == packet.link_id) {
+                myRoute.totalCost = neighbourLcs[i].cost;
+            }
+        }
+        logRIB();
+    }
+
+    private static void updateRIB(PKT_LSPDU packet) {
+        // link information of myself, ignore
+        if (packet.router_id == routerId) return;
+
+        // if neighbour
+        if (neighbours.containsKey(packet.link_id)) {
+            
+        }
     }
 
     private static void logTopologyDB() {

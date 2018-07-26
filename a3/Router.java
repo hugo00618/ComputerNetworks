@@ -34,7 +34,7 @@ public class Router {
     }
 
     static class Route {
-        int next_id; // first router id
+        int next_id; // id of src's first neighbouring router in this route
         int totalCost;
 
         public Route() {
@@ -247,9 +247,6 @@ public class Router {
 
         // wait for packets
         waitPackets();
-
-        // close logger
-        closeLogger();
     }
 
     private static void validateInput(String[] args) throws Exception {
@@ -302,7 +299,7 @@ public class Router {
         circuitDb = new circuit_DB(dp.getData());
         circuitDb.logReceive(routerId);
 
-        // init lspdus
+        // init topologyDB
         topologyDB = new ArrayList<>();
         for (int i = 0; i < circuitDb.nbr_link; i++) {
             link_cost lc = circuitDb.linkcost[i];
@@ -352,7 +349,7 @@ public class Router {
         // audit
         packet.logReceive(routerId);
 
-        // ignore if we already know this link
+        // ignore if already seen this link
         for (PKT_LSPDU lspdu : topologyDB) {
             if (lspdu.router_id == packet.router_id &&
                     lspdu.link_id == packet.link_id) {
@@ -367,7 +364,7 @@ public class Router {
         // update RIB
         updateRIB(packet);
 
-        // send to neighbours
+        // forward to neighbours except sender
         packet.sender = routerId;
         for (Integer link_id : neighbours.keySet()) {
             // exclude the sender of PKT_LSPDU
@@ -376,10 +373,6 @@ public class Router {
                 sendPacket(packet);
             }
         }
-    }
-
-    private static void closeLogger() {
-        logger.close();
     }
 
     /**

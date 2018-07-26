@@ -307,7 +307,7 @@ public class Router {
         topologyDB = new ArrayList<>();
         for (int i = 0; i < circuitDb.nbr_link; i++) {
             link_cost lc = circuitDb.linkcost[i];
-            topologyDB.add(new PKT_LSPDU(routerId, 0, lc.link, lc.cost, 0));
+            topologyDB.add(new PKT_LSPDU(0, routerId, lc.link, lc.cost, 0));
         }
         logTopologyDB();
     }

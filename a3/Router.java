@@ -27,6 +27,8 @@ public class Router {
     private static Map<Integer, Integer> neighbours; // link_id, router_id
     private static Map<Integer, Route> rib; // destRouter_id, Route
 
+    private static int checkRouter_id; // router being checked by Dijkstra
+
     private static PrintWriter logger;
 
     private Router() {
@@ -34,7 +36,7 @@ public class Router {
     }
 
     static class Route {
-        int next_id;
+        int next_id; // first router id
         int totalCost;
 
         public Route() {
@@ -280,6 +282,8 @@ public class Router {
             rib.put(i, new Route());
         }
 
+        checkRouter_id = routerId;
+
         logger = new PrintWriter("router" + routerId + ".log");
     }
 
@@ -387,23 +391,39 @@ public class Router {
     }
 
     private static void updateRIB(PKT_HELLO packet) {
+        // neighbour of src, set route cost directly
         Route myRoute = rib.get(packet.router_id);
         link_cost[] neighbourLcs = circuitDb.linkcost;
         for (int i = 0; i < circuitDb.nbr_link; i++) {
             if (neighbourLcs[i].link == packet.link_id) {
                 myRoute.totalCost = neighbourLcs[i].cost;
+                myRoute.next_id = packet.router_id;
             }
         }
+
+        // if traversed all neighbours of src, set checkRouted_id to next
+        if (neighbours.size() == circuitDb.nbr_link) {
+            int minCost = -1;
+            for (Route route: rib.values()) {
+                if (minCost == -1 || route.totalCost < minCost) {
+                    minCost = route.totalCost;
+                    checkRouter_id = route.next_id;
+                }
+            }
+        }
+
         logRIB();
     }
 
     private static void updateRIB(PKT_LSPDU packet) {
+        System.out.println(checkRouter_id);
+
         // link information of myself, ignore
         if (packet.router_id == routerId) return;
 
         // if neighbour
         if (neighbours.containsKey(packet.link_id)) {
-            
+
         }
     }
 

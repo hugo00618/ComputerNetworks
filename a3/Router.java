@@ -422,7 +422,7 @@ public class Router {
                 if (myRoute.totalCost != Integer.MAX_VALUE) {
                     int totalCost = myRoute.totalCost + packet.cost;
                     // if calculated new cost is less than old, set dirty bit to 1 and log new RIB at the end
-                    if (rib.get(packet.router_id).setMinTotalCost(totalCost, lspdu.router_id)) {
+                    if (rib.get(packet.router_id).setMinTotalCost(totalCost, packet.sender)) {
                         dirty = true;
                     }
                 }

@@ -4,7 +4,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Router {
 
@@ -20,7 +21,7 @@ public class Router {
     private static DatagramSocket socket;
 
     private static circuit_DB circuitDb;
-    private static Map<Integer, List<link_cost>> lsdb;
+    private static List<PKT_LSPDU> lspdus;
 
     private static PrintWriter logger;
 
@@ -270,14 +271,12 @@ public class Router {
         circuitDb = new circuit_DB(dp.getData());
         circuitDb.logReceive(routerId);
 
-        // init lsdb
-        lsdb = new HashMap<>();
-        List<link_cost> lcs = new ArrayList<>();
+        // init lspdus
+        lspdus = new ArrayList<>();
         for (int i = 0; i < circuitDb.nbr_link; i++) {
-            lcs.add(circuitDb.linkcost[i]);
+            link_cost lc = circuitDb.linkcost[i];
+            lspdus.add(new PKT_LSPDU(routerId, 0, lc.link, lc.cost, 0));
         }
-        lsdb.put(routerId, lcs);
-        logLsdb();
     }
 
     private static void sendHello() throws Exception {
@@ -303,12 +302,12 @@ public class Router {
         packet.logReceive(routerId);
 
         // respond with lspdus
-/*        for (PKT_LSPDU lspdu: lspdus) {
+        for (PKT_LSPDU lspdu: lspdus) {
             lspdu.router_id = packet.router_id;
             lspdu.via = packet.link_id;
 
             sendPacket(lspdu);
-        }*/
+        }
 
         // recalculate min paths
 
@@ -319,30 +318,6 @@ public class Router {
         packet.logReceive(routerId);
 
 
-    }
-
-    private static void setLsdb() {
-
-    }
-
-    private static void logLsdb() {
-        logger.println("# Topology database");
-        for (int i = 1; i <= NBR_ROUTER; i++) {
-            if (lsdb.containsKey(i)) {
-                List<link_cost> lcs = lsdb.get(i);
-                logger.printf("R%d -> R%d nbr link %d\n",
-                        routerId,
-                        i,
-                        lcs.size());
-                for (link_cost lc: lcs) {
-                    logger.printf("R%d -> R%d link %d cost %d\n",
-                            routerId,
-                            i,
-                            lc.link,
-                            lc.cost);
-                }
-            }
-        }
     }
 
     private static void closeLogger() {
